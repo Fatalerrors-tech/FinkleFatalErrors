@@ -1,182 +1,215 @@
 
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const session = require("express-session");
-const SQLiteStore = require("connect-sqlite3")(session);
-const bcrypt = require("bcryptjs");
-const Database = require("better-sqlite3");
-const path = require("path");
+let isRegistering = false;
+let socket = null;
+let currentUsername = "";
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+const authScreen = document.getElementById("authScreen");
+const chatScreen = document.getElementById("chatScreen");
+const authForm = document.getElementById("authForm");
+const authError = document.getElementById("authError");
 
-const db = new Database("accounts.db");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
 
-db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-        password TEXT NOT NULL
-    )
-`);
+const switchButton = document.getElementById("switchButton");
+const submitButton = document.getElementById("submitButton");
+const sendButton = document.getElementById("sendButton");
+const messageInput = document.getElementById("messageInput");
+const connectionStatus = document.getElementById("connectionStatus");
 
-app.use(express.json({ limit: "10kb" }));
+// SWITCH LOGIN / REGISTER
+switchButton.addEventListener("click", () => {
+    isRegistering = !isRegistering;
 
-const sessionMiddleware = session({
-    store: new SQLiteStore({
-        db: "sessions.sqlite",
-        dir: "."
-    }),
-    secret: process.env.SESSION_SECRET || "CHANGE-THIS-SECRET",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    }
+    document.getElementById("authSubtitle").textContent =
+        isRegistering
+            ? "Create an account to join the chatroom."
+            : "Log in to enter the chatroom.";
+
+    submitButton.textContent =
+        isRegistering ? "Create Account" : "Log In";
+
+    switchButton.textContent =
+        isRegistering
+            ? "Already have an account? Log In"
+            : "Create Account";
+
+    passwordInput.autocomplete =
+        isRegistering ? "new-password" : "current-password";
+
+    authError.textContent = "";
 });
 
-app.use(sessionMiddleware);
-app.use(express.static(path.join(__dirname, "public")));
+// LOGIN / REGISTER
+authForm.addEventListener("submit", async event => {
+    event.preventDefault();
 
-io.engine.use(sessionMiddleware);
+    authError.textContent = "";
+    submitButton.disabled = true;
 
-// CREATE ACCOUNT
-app.post("/api/register", async (req, res) => {
     try {
-        const username = String(req.body.username || "").trim();
-        const password = String(req.body.password || "");
+        const response = await fetch(
+            isRegistering ? "/api/register" : "/api/login",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    username: usernameInput.value.trim(),
+                    password: passwordInput.value
+                })
+            }
+        );
 
-        if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-            return res.status(400).json({
-                error: "Username must be 3-20 characters (letters, numbers or underscores)."
-            });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Login failed.");
         }
 
-        if (password.length < 8 || password.length > 72) {
-            return res.status(400).json({
-                error: "Password must be between 8 and 72 characters."
-            });
-        }
+        passwordInput.value = "";
+        showChat(data.username);
 
-        const existing = db.prepare(
-            "SELECT id FROM users WHERE username = ?"
-        ).get(username);
-
-        if (existing) {
-            return res.status(409).json({
-                error: "That username is already taken."
-            });
-        }
-
-        const hash = await bcrypt.hash(password, 12);
-
-        const result = db.prepare(
-            "INSERT INTO users (username, password) VALUES (?, ?)"
-        ).run(username, hash);
-
-        req.session.userId = result.lastInsertRowid;
-        req.session.username = username;
-
-        req.session.save(err => {
-            if (err) return res.status(500).json({ error: "Session error." });
-
-            res.json({ success: true, username });
-        });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Could not create account." });
+    } catch (error) {
+        authError.textContent = error.message;
+    } finally {
+        submitButton.disabled = false;
     }
 });
 
-// LOG IN
-app.post("/api/login", async (req, res) => {
-    try {
-        const username = String(req.body.username || "").trim();
-        const password = String(req.body.password || "");
+// SHOW CHAT
+function showChat(username) {
+    currentUsername = username;
 
-        const user = db.prepare(
-            "SELECT * FROM users WHERE username = ?"
-        ).get(username);
+    authScreen.style.display = "none";
+    chatScreen.style.display = "flex";
 
-        if (!user || !(await bcrypt.compare(password, user.password))) {
-            return res.status(401).json({
-                error: "Incorrect username or password."
-            });
-        }
+    document.getElementById("currentUser").textContent = username;
 
-        req.session.regenerate(err => {
-            if (err) return res.status(500).json({ error: "Session error." });
+    connectChat();
+}
 
-            req.session.userId = user.id;
-            req.session.username = user.username;
-
-            req.session.save(err => {
-                if (err) return res.status(500).json({ error: "Session error." });
-
-                res.json({
-                    success: true,
-                    username: user.username
-                });
-            });
-        });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Login failed." });
-    }
-});
-
-// CHECK CURRENT LOGIN
-app.get("/api/me", (req, res) => {
-    if (!req.session.userId) {
-        return res.json({ loggedIn: false });
+// CONNECT TO SERVER
+function connectChat() {
+    if (socket) {
+        socket.disconnect();
     }
 
-    res.json({
-        loggedIn: true,
-        username: req.session.username
-    });
-});
-
-// LOG OUT
-app.post("/api/logout", (req, res) => {
-    req.session.destroy(() => {
-        res.clearCookie("connect.sid");
-        res.json({ success: true });
-    });
-});
-
-// CHATROOM
-io.on("connection", socket => {
-    const username = socket.request.session.username;
-
-    if (!socket.request.session.userId || !username) {
-        socket.disconnect(true);
+    if (typeof io !== "function") {
+        connectionStatus.textContent =
+            "🔴 Socket.IO failed to load. Check the server.";
         return;
     }
 
-    socket.on("chatMessage", text => {
-        if (typeof text !== "string") return;
+    connectionStatus.textContent = "Connecting...";
+    socket = io();
 
-        text = text.trim().slice(0, 500);
-        if (!text) return;
-
-        io.emit("chatMessage", {
-            username,
-            text,
-            time: new Date().toLocaleTimeString()
-        });
+    socket.on("connect", () => {
+        connectionStatus.textContent = "🟢 Connected";
     });
+
+    socket.on("disconnect", () => {
+        connectionStatus.textContent = "🔴 Disconnected";
+    });
+
+    socket.on("connect_error", error => {
+        connectionStatus.textContent =
+            "🔴 Connection failed: " + error.message;
+    });
+
+    socket.on("chatMessage", data => {
+        displayMessage(data);
+    });
+}
+
+// DISPLAY MESSAGE
+function displayMessage(data) {
+    const messages = document.getElementById("messages");
+
+    const message = document.createElement("div");
+
+    message.className =
+        "message" +
+        (data.username === currentUsername ? " mine" : "");
+
+    const user = document.createElement("div");
+    user.className = "username";
+    user.textContent = data.username;
+
+    const content = document.createElement("div");
+    content.textContent = data.text;
+
+    const time = document.createElement("div");
+    time.className = "timestamp";
+    time.textContent = data.time || "";
+
+    message.append(user, content, time);
+    messages.appendChild(message);
+
+    messages.scrollTop = messages.scrollHeight;
+}
+
+// SEND MESSAGE
+function sendMessage() {
+    const text = messageInput.value.trim();
+
+    if (!text) return;
+
+    if (!socket || !socket.connected) {
+        connectionStatus.textContent =
+            "🔴 Not connected. Your message was not sent.";
+        return;
+    }
+
+    socket.emit("chatMessage", text);
+
+    messageInput.value = "";
+    messageInput.focus();
+}
+
+sendButton.addEventListener("click", sendMessage);
+
+messageInput.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+    }
 });
 
-const PORT = process.env.PORT || 3000;
+// LOG OUT
+document.getElementById("logoutButton").addEventListener("click", async () => {
+    if (socket) socket.disconnect();
 
-server.listen(PORT, () => {
-    console.log(`Chatroom running on port ${PORT}`);
+    try {
+        await fetch("/api/logout", {
+            method: "POST"
+        });
+    } catch (error) {
+        console.error("Logout request failed.");
+    }
+
+    chatScreen.style.display = "none";
+    authScreen.style.display = "block";
+
+    usernameInput.value = "";
+    passwordInput.value = "";
+    authError.textContent = "";
 });
+
+// RESTORE LOGIN
+async function checkLogin() {
+    try {
+        const response = await fetch("/api/me");
+        const data = await response.json();
+
+        if (data.loggedIn) {
+            showChat(data.username);
+        }
+    } catch (error) {
+        authError.textContent =
+            "Could not connect to the server.";
+    }
+}
+
+checkLogin();
