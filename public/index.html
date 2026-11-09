@@ -3,53 +3,120 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Finkle's Chatroom</title>
 
 <style>
-* {
-    box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
     margin: 0;
-    font-family: Arial, sans-serif;
     background: #151515;
     color: white;
+    font-family: Arial, sans-serif;
+    min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+}
+
+button, input { font: inherit; }
+
+button {
+    background: #5268df;
+    border: 0;
+    border-radius: 8px;
+    color: white;
+    padding: 12px 18px;
+    cursor: pointer;
+}
+
+button:hover { background: #687df0; }
+
+.auth-container {
+    width: 90%;
+    max-width: 400px;
+    padding: 30px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 14px;
+    box-shadow: 0 10px 40px #0008;
+}
+
+.auth-container h1 {
+    text-align: center;
+    color: #a78bfa;
+}
+
+.auth-container p {
+    text-align: center;
+    color: #aaa;
+}
+
+.auth-container input {
+    display: block;
+    width: 100%;
+    margin: 12px 0;
+    padding: 14px;
+    border: 1px solid #555;
+    border-radius: 8px;
+    background: #181818;
+    color: white;
+}
+
+.auth-container button {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.switch {
+    background: transparent;
+    color: #a78bfa;
+}
+
+#authError {
+    color: #ff7777;
+    font-size: 13px;
+}
+
+#chatScreen {
+    display: none;
+    width: 100%;
+    justify-content: center;
 }
 
 .chat-container {
     width: 90%;
     max-width: 650px;
-    height: 650px;
+    height: 90vh;
+    max-height: 750px;
     background: #222;
     border: 1px solid #444;
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    box-shadow: 0 10px 40px #0008;
 }
 
 header {
     padding: 20px;
     background: #402963;
-    border-bottom: 1px solid #444;
 }
 
-header h1 {
-    margin: 0;
-    font-size: 22px;
-}
+header h1 { margin: 0; }
 
 header p {
-    margin: 5px 0 0;
-    color: #aaa;
-    font-size: 13px;
+    margin-bottom: 0;
+    color: #ccc;
+}
+
+.userbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background: #202020;
+    gap: 10px;
 }
 
 #messages {
@@ -66,7 +133,6 @@ header p {
     padding: 12px;
     border-radius: 10px;
     max-width: 80%;
-    align-self: flex-start;
     overflow-wrap: anywhere;
 }
 
@@ -81,10 +147,6 @@ header p {
     margin-bottom: 5px;
 }
 
-.message.mine .username {
-    color: #ddd;
-}
-
 .timestamp {
     font-size: 10px;
     color: #aaa;
@@ -97,50 +159,33 @@ header p {
     padding: 15px;
     gap: 10px;
     background: #292929;
-    border-top: 1px solid #444;
 }
 
-input {
+.input-area input {
     flex: 1;
     min-width: 0;
     padding: 13px;
+    background: #181818;
     border: 1px solid #555;
     border-radius: 8px;
-    background: #181818;
     color: white;
-    outline: none;
 }
 
-button {
-    padding: 12px 20px;
-    border: none;
-    border-radius: 8px;
-    background: #5268df;
-    color: white;
-    cursor: pointer;
-}
-
-button:hover {
-    background: #687df0;
-}
-
-.username-area {
-    padding: 10px 15px;
-    background: #202020;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.username-area input {
-    max-width: 180px;
+#connectionStatus {
+    font-size: 12px;
+    color: #aaa;
 }
 
 @media(max-width: 500px) {
     .chat-container {
         width: 100%;
-        height: 100vh;
+        height: 100dvh;
+        max-height: none;
         border-radius: 0;
+    }
+
+    .auth-container {
+        width: 92%;
     }
 }
 </style>
@@ -148,78 +193,268 @@ button:hover {
 
 <body>
 
-<div class="chat-container">
+<!-- LOGIN / REGISTER -->
+<div class="auth-container" id="authScreen">
 
-    <header>
-        <h1>💬 The Chatroom</h1>
-        <p>A place to talk with everyone.</p>
-    </header>
+    <h1>💬 Finkle's Chatroom</h1>
+    <p id="authSubtitle">Log in to enter the chatroom.</p>
 
-    <div class="username-area">
-        <label for="username">Username:</label>
-        <input id="username" value="Guest" maxlength="20">
-    </div>
-
-    <div id="messages">
-        <div class="message">
-            <div class="username">System</div>
-            Welcome to the chatroom! Say hello!
-        </div>
-    </div>
-
-    <div class="input-area">
+    <form id="authForm">
         <input
-            id="messageInput"
-            placeholder="Type a message..."
-            maxlength="500"
-            autocomplete="off"
+            id="username"
+            placeholder="Username"
+            maxlength="20"
+            minlength="3"
+            autocomplete="username"
+            required
         >
-        <button onclick="sendMessage()">Send</button>
-    </div>
+
+        <input
+            id="password"
+            type="password"
+            placeholder="Password"
+            minlength="8"
+            autocomplete="current-password"
+            required
+        >
+
+        <p id="authError" role="alert"></p>
+
+        <button type="submit" id="submitButton">
+            Log In
+        </button>
+    </form>
+
+    <button class="switch" id="switchButton" type="button">
+        Create Account
+    </button>
 
 </div>
 
+<!-- CHATROOM -->
+<div id="chatScreen">
+    <div class="chat-container">
+
+        <header>
+            <h1>💬 The Chatroom</h1>
+            <p>A place to talk with everyone.</p>
+        </header>
+
+        <div class="userbar">
+            <span>Logged in as <b id="currentUser"></b></span>
+            <button id="logoutButton">Log Out</button>
+        </div>
+
+        <div id="connectionStatus">Connecting...</div>
+
+        <div id="messages">
+            <div class="message">
+                <div class="username">System</div>
+                Welcome to the chatroom! Say hello!
+            </div>
+        </div>
+
+        <div class="input-area">
+            <input
+                id="messageInput"
+                placeholder="Type a message..."
+                maxlength="500"
+                autocomplete="off"
+            >
+            <button id="sendButton">Send</button>
+        </div>
+
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
 <script>
-const messages = document.getElementById("messages");
-const input = document.getElementById("messageInput");
-const username = document.getElementById("username");
+let isRegistering = false;
+let socket = null;
+let currentUsername = "";
 
-function sendMessage() {
-    const text = input.value.trim();
-    const name = username.value.trim() || "Guest";
+const authScreen = document.getElementById("authScreen");
+const chatScreen = document.getElementById("chatScreen");
+const authForm = document.getElementById("authForm");
+const authError = document.getElementById("authError");
 
-    if (!text) return;
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
 
-    const message = document.createElement("div");
-    message.className = "message mine";
+const switchButton = document.getElementById("switchButton");
+const submitButton = document.getElementById("submitButton");
 
-    const user = document.createElement("div");
-    user.className = "username";
-    user.textContent = name;
+// SWITCH LOGIN / REGISTER
+switchButton.addEventListener("click", () => {
+    isRegistering = !isRegistering;
 
-    const content = document.createElement("div");
-    content.textContent = text;
+    document.getElementById("authSubtitle").textContent =
+        isRegistering
+        ? "Create an account to join the chatroom."
+        : "Log in to enter the chatroom.";
 
-    const time = document.createElement("div");
-    time.className = "timestamp";
-    time.textContent = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
+    submitButton.textContent =
+        isRegistering ? "Create Account" : "Log In";
+
+    switchButton.textContent =
+        isRegistering ? "Already have an account? Log In" : "Create Account";
+
+    passwordInput.autocomplete =
+        isRegistering ? "new-password" : "current-password";
+
+    authError.textContent = "";
+});
+
+// LOGIN / REGISTER REQUEST
+authForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    authError.textContent = "";
+    submitButton.disabled = true;
+
+    const endpoint = isRegistering
+        ? "/api/register"
+        : "/api/login";
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                username: usernameInput.value.trim(),
+                password: passwordInput.value
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Something went wrong.");
+        }
+
+        passwordInput.value = "";
+        showChat(data.username);
+
+    } catch (error) {
+        authError.textContent = error.message;
+    } finally {
+        submitButton.disabled = false;
+    }
+});
+
+// SHOW CHATROOM
+function showChat(username) {
+    currentUsername = username;
+
+    authScreen.style.display = "none";
+    chatScreen.style.display = "flex";
+
+    document.getElementById("currentUser").textContent = username;
+
+    connectChat();
+}
+
+// CONNECT TO SOCKET.IO
+function connectChat() {
+    if (socket) socket.disconnect();
+
+    socket = io();
+
+    socket.on("connect", () => {
+        document.getElementById("connectionStatus").textContent =
+            "🟢 Connected";
     });
 
-    message.append(user, content, time);
-    messages.appendChild(message);
+    socket.on("disconnect", () => {
+        document.getElementById("connectionStatus").textContent =
+            "🔴 Disconnected";
+    });
+
+    socket.on("connect_error", () => {
+        document.getElementById("connectionStatus").textContent =
+            "Connection error. Please reload.";
+    });
+
+    socket.on("chatMessage", data => {
+        const messages = document.getElementById("messages");
+
+        const message = document.createElement("div");
+
+        message.className =
+            "message" +
+            (data.username === currentUsername ? " mine" : "");
+
+        const user = document.createElement("div");
+        user.className = "username";
+        user.textContent = data.username;
+
+        const content = document.createElement("div");
+        content.textContent = data.text;
+
+        const time = document.createElement("div");
+        time.className = "timestamp";
+        time.textContent = data.time;
+
+        message.append(user, content, time);
+        messages.appendChild(message);
+
+        messages.scrollTop = messages.scrollHeight;
+    });
+}
+
+// SEND MESSAGE
+function sendMessage() {
+    const input = document.getElementById("messageInput");
+    const text = input.value.trim();
+
+    if (!text || !socket || !socket.connected) return;
+
+    socket.emit("chatMessage", text);
 
     input.value = "";
-    messages.scrollTop = messages.scrollHeight;
     input.focus();
 }
 
-input.addEventListener("keydown", function(event) {
-    if (event.key === "Enter") {
-        sendMessage();
-    }
+document.getElementById("sendButton").addEventListener("click", sendMessage);
+
+document.getElementById("messageInput").addEventListener("keydown", event => {
+    if (event.key === "Enter") sendMessage();
 });
+
+// LOG OUT
+document.getElementById("logoutButton").addEventListener("click", async () => {
+    if (socket) socket.disconnect();
+
+    await fetch("/api/logout", {
+        method: "POST"
+    });
+
+    chatScreen.style.display = "none";
+    authScreen.style.display = "block";
+
+    usernameInput.value = "";
+    passwordInput.value = "";
+    authError.textContent = "";
+});
+
+// RESTORE EXISTING SESSION
+async function checkLogin() {
+    try {
+        const response = await fetch("/api/me");
+        const data = await response.json();
+
+        if (data.loggedIn) {
+            showChat(data.username);
+        }
+    } catch (error) {
+        authError.textContent = "Could not connect to the server.";
+    }
+}
+
+checkLogin();
 </script>
 
 </body>
