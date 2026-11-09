@@ -1,14 +1,17 @@
-
 {
-  "name": "chatroom",
+  "name": "finkle-fatal-errors-chatroom",
   "version": "1.0.0",
-  "description": "Multiplayer chatroom",
+  "description": "Finkle and The Fatal Errors Chatroom",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^5.1.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "express-session": "^1.18.1",
+    "connect-sqlite3": "^0.9.15",
+    "better-sqlite3": "^12.2.0",
+    "bcryptjs": "^3.0.2"
   }
 }
